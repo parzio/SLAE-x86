@@ -1,37 +1,55 @@
-## Welcome to GitHub Pages
+# x86 Assembly Language and Shellcoding on Linux
 
-You can use the [editor on GitHub](https://github.com/parzio/SLAE-x86/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+I recently regitered to the SLAE course for improving my skills with regards to Assembly language and Shellcoding.
+Once completed the course, which I found very instructive and curated  I decided to go for the related certification.
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+Hereafter the assignments to be completed and to be published online to successfully earning the certification.
 
-### Markdown
+## Assignment 1
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+* Create a Shell_Bind_TCP shellcode
+  * Binds to a port
+  * Execs shell on incoming connections
+* Port number should be easily configurable
 
-```markdown
-Syntax highlighted code block
+## Assignment 2
 
-# Header 1
-## Header 2
-### Header 3
+* Create a Shell_Reverse_TCP shellcode
+  * Reverse connects to a configured IP and Port
+  * Execs shell on successfull connection
+* IP and Port should be easily configurable
 
-- Bulleted
-- List
+## Assignment 3
 
-1. Numbered
-2. List
+* Study about Egg Hunters shellcode
+* Create a working demo of the Egghunter
+* Should be configurable for different payloads
 
-**Bold** and _Italic_ and `Code` text
+## Assignment 4
 
-[Link](url) and ![Image](src)
-```
+* Create a custom encoding scheme like the "Insertion Encoder" we showed you
+* PoC with using the execve-stack as the shellcode to encode with your schema and execute
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
+## Assignment 5
 
-### Jekyll Themes
+* Take up at least 3 shellcode samples created using the Msfpayload for linux/x86
+* Use GDB/Disasm/Libemu to dissect the functionality of the shellcode
+* Present your analysis
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/parzio/SLAE-x86/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+## Assignment 6
 
-### Support or Contact
+* Take up 3 shellcodes from Shell-Storm and create a polymorphic version of them to beat pattern matching
+* The polymorphic version cannot be larger 150% of the existing shellcode
+* Bonus point for making it shorter in length than original
 
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+## Assignment 7
+
+* Create a custom crypter like the one shown in the "crypters" video
+* Free to use any encryption schema 
+* Can use any programming language
+___
+
+This blog post has been created for completing the requirements of the SecurityTube Linux Assembly Expert certification.
+[http://securitytube-training.com/online-courses/securit-tube-linux-assembly-expert]
+
+Student-ID: PA-8733
