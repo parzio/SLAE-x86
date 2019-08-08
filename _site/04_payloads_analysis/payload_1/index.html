@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/assets/css/style.css?v=ff3500eed5a75a68d749d7b17422f0859d1af87a">
+
+<!-- Begin Jekyll SEO tag v2.5.0 -->
+<title>Analysis of three payloads of my choice - part 1 | SLAE-x86</title>
+<meta name="generator" content="Jekyll v3.8.5" />
+<meta property="og:title" content="Analysis of three payloads of my choice - part 1" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="x86 Assembly Language and Shellcoding on Linux" />
+<meta property="og:description" content="x86 Assembly Language and Shellcoding on Linux" />
+<link rel="canonical" href="http://localhost:4000/04_payloads_analysis/payload_1/" />
+<meta property="og:url" content="http://localhost:4000/04_payloads_analysis/payload_1/" />
+<meta property="og:site_name" content="SLAE-x86" />
+<script type="application/ld+json">
+{"url":"http://localhost:4000/04_payloads_analysis/payload_1/","headline":"Analysis of three payloads of my choice - part 1","description":"x86 Assembly Language and Shellcoding on Linux","@type":"WebPage","@context":"http://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+
+  </head>
+
+  <body>
+
+    <header>
+      <div class="container">
+        <h1>SLAE-x86</h1>
+        <h2>x86 Assembly Language and Shellcoding on Linux</h2>
+
+        <section id="downloads">
+          
+          <a href="https://github.com/parzio/SLAE-x86" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
+        </section>
+      </div>
+    </header>
+
+    <div class="container">
+      <section id="main_content">
+        <h1 id="analysis-of-three-payloads-of-my-choice---part-1">Analysis of three payloads of my choice - part 1</h1>
+
+<h2 id="linuxx86chmod">linux/x86/chmod</h2>
+
+<p>I decided to analyze as first shellcode linux/x86/chmod.
+Firstly, let’s have a look to the basic options for the shellcode generation.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt; msfvenom -p linux/x86/chmod --list-options
+
+Options for payload/linux/x86/chmod:
+=========================
+
+
+       Name: Linux Chmod
+     Module: payload/linux/x86/chmod
+   Platform: Linux
+       Arch: x86
+Needs Admin: No
+ Total size: 36
+       Rank: Normal
+
+Provided by:
+    kris katterjohn &lt;katterjohn@gmail.com&gt;
+
+Basic options:
+Name  Current Setting  Required  Description
+----  ---------------  --------  -----------
+FILE  /etc/shadow      yes       Filename to chmod
+MODE  0666             yes       File mode (octal)
+
+Description:
+  Runs chmod on specified file with specified mode
+
+</code></pre></div></div>
+<p>Let’s generate the payload and disassemble it with ndisasm.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt; msfvenom -p linux/x86/chmod FILE=/tmp/test.txt/ MODE=0744 -f raw | ndisasm -b32 -
+
+Payload size: 38 bytes
+
+00000000  99                cdq
+00000001  6A0F              push byte +0xf
+00000003  58                pop eax
+00000004  52                push edx
+00000005  E80E000000        call 0x18
+0000000A  2F                das
+0000000B  746D              jz 0x7a
+0000000D  702F              jo 0x3e
+0000000F  7465              jz 0x76
+00000011  7374              jnc 0x87
+00000013  2E7478            cs jz 0x8e
+00000016  7400              jz 0x18
+00000018  5B                pop ebx
+00000019  68E4010000        push dword 0x1e4
+0000001E  59                pop ecx
+0000001F  CD80              int 0x80
+00000021  6A01              push byte +0x1
+00000023  58                pop eax
+00000024  CD80              int 0x80
+</code></pre></div></div>
+
+<p>The code looks to be very compact and the information is enough to understand easily any action it performs. 
+Let’s analyze it statically commenting each instruction.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>00000000  99                cdq              ; convert DWORD in EAX to a signed quad word in edx:eax, the goal here is clearing edx register
+00000001  6A0F              push byte +0xf   ; push on the stack the value 0x0000000f (15), that is the syscall number for chmod (/usr/include/i386-linux-gnu/asm/unistd_32.h)
+00000003  58                pop eax          ; retrieve the syscall number from the stack and place it in the eax register
+00000004  52                push edx         ; push on the stack 0x00000000
+00000005  E80E000000        call 0x18        ; set the EIP address to 0x18 and push 0x0000000A on the stack (trick to have access to a string without having a disposal a data section
+0000000A  2F                das              ; /
+0000000B  746D              jz 0x7a          ; tm
+0000000D  702F              jo 0x3e          ; p/
+0000000F  7465              jz 0x76          ; te
+00000011  7374              jnc 0x87         ; st
+00000013  2E7478            cs jz 0x8e       ; .tx
+00000016  7400              jz 0x18          ; t 0x00 (end of string)
+00000018  5B                pop ebx          ; retrieve the address of where is located the name of the file (0x0000000A)
+00000019  68E4010000        push dword 0x1e4 ; push on the stack 484 that is the value of the mask to apply to the file (0744)
+0000001E  59                pop ecx          ; retrive the mask value and store it in ecx
+0000001F  CD80              int 0x80         ; interrupt to call the chmod sycall
+00000021  6A01              push byte +0x1   ; push on the stack the value 0x00000001 that is the value of the exit syscall
+00000023  58                pop eax          ; retrieve the value of the exit syscall
+00000024  CD80              int 0x80         ; interrupt to call the exit sycall
+</code></pre></div></div>
+
+<p>Given the signature of chmod and exit syscall:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt; man 2 chmod
+int chmod(const char *pathname, mode_t mode);
+&gt; man 2 exit
+void _exit(int status)
+</code></pre></div></div>
+<p>our analysis looks to be correct, but to have total certainty let’s run it using gdb.
+The most direct way to do so, without having to write a c program where the shellcode is executed, is using msfvenom and generate directly an elf binary:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt; msfvenom -p linux/x86/chmod FILE=/tmp/test.txt MODE=0744 -f elf -o chmod_elf
+</code></pre></div></div>
+<p>Let’s run the binary using gdb.</p>
+
+<p>Firstly the entry point was identified and a breakpoint was set there. Also the flavor of the code to be shown has been changed to intel.</p>
+
+<p><img src="/04_payloads_analysis/payload_1/run-gdb.png" alt="Run GDB" /></p>
+
+<p>I stepped till the execution of the chmod syscall to check the status of the registers.</p>
+
+<p><img src="/04_payloads_analysis/payload_1/status-chmod-syscall.png" alt="Syscall chmod" /></p>
+
+<p>The status of the register is as expected:</p>
+
+<ul>
+  <li>eax contains the syscall number</li>
+  <li>ebx contains the address where the file name is located. The memory inspection is a proof of that.</li>
+  <li>ecx contains the mask to assign to the file, 0x1e4</li>
+</ul>
+
+<p>Let’s go further till the exit syscall is ready to be triggered.</p>
+
+<p><img src="/04_payloads_analysis/payload_1/status-exit-syscall.png" alt="Syscall exit" /></p>
+
+<p>The status of the register is as expected:</p>
+
+<ul>
+  <li>eax contains the syscall number</li>
+  <li>bl contains the status code that will be returned (0x52)</li>
+</ul>
+
+<p>The program concludes successfully, let’s check status code.</p>
+
+<p><img src="/04_payloads_analysis/payload_1/exit-code.png" alt="Exit status" /></p>
+
+<p>The program exited with 94 as status code, which is in hex 0x52 as expected.</p>
+
+<p>Great! Analysis completed.</p>
+
+<p><br /></p>
+
+<hr />
+
+<p><em>This blog post has been created for completing the requirements of the SecurityTube Linux Assembly Expert certification.</em></p>
+
+<p><a href="http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert">http://securitytube-training.com/online-courses/security-tube-linux-assembly-expert</a></p>
+
+<p><em>Student-ID: PA-8733</em></p>
+
+      </section>
+    </div>
+
+    
+  </body>
+</html>
