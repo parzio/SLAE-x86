@@ -171,7 +171,6 @@ Well, this concludes assignment 4!
 <br/>
 
 ---
----
 
 *This blog post has been created for completing the requirements of the SecurityTube Linux Assembly Expert certification.*
 
